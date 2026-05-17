@@ -3,7 +3,7 @@ import json
 import random
 import os
 from groq import Groq
-from dotenv import load_model, load_dotenv
+from dotenv import load_dotenv
 load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -47,7 +47,7 @@ def generate_dynamic_recipes():
 
     為了讓前端 React 能夠直接解析且完美呈現、完全不爆 UI，你『必須』且『只能』回傳標準的 JSON 陣列，裡面的欄位必須跟範例完全一模一樣。不要包含任何 markdown 語法（如 ```json）或任何廢話。
 
-    格式範本（你必須嚴格遵守這些欄位名稱）：
+    格式範本（你必須嚴格遵守這些欄位名稱，包含新擴充的食材與步驟）：
     [
       {{
         "id": "gen_1",
@@ -55,10 +55,16 @@ def generate_dynamic_recipes():
         "en": "英文菜名（例如：Pan-Seared Chicken Salsa）",
         "min": 20,
         "kcal": 450,
-        "uses": ["tomato", "chicken"],
+        "uses": [" tomato", "chicken"],
         "saves": 2,
         "level": "簡單",
-        "method": "平底鍋"
+        "method": "平底鍋",
+        "ingredients": ["雞胸肉", "番茄", "洋蔥", "鹽", "黑胡椒"],
+        "instructions": [
+          "將雞胸肉用鹽與黑胡椒醃製 5 分鐘。",
+          "熱鍋下油，將雞胸肉兩面各煎 3 分鐘至熟透。",
+          "番茄與洋蔥切丁拌勻，鋪在煎好的雞胸肉上即可。"
+        ]
       }}
     ]
     """
