@@ -1,5 +1,6 @@
 import os
 import tempfile
+from ai_chef import generate_dynamic_recipes, get_current_fridge_items
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from predict_combined import load_all_models, predict_combined
@@ -80,13 +81,15 @@ def post_inv():
 @app.route("/recipes", methods=["GET"])
 def get_recipes():
     ids = [i for i in request.args.get("ids", "").split(",") if i]
+    
     if ids:
-        result = [r for r in RECIPES if any(u in ids for u in r["uses"])]
-        if not result:
-            result = RECIPES
+        target_ingredients = ids
     else:
-        result = RECIPES
-    return jsonify(result)
+        target_ingredients = get_current_fridge_items()
+    
+    dynamic_result = generate_dynamic_recipes(target_ingredients)
+    
+    return jsonify(dynamic_result)
 
 
 if __name__ == "__main__":
