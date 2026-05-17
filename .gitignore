@@ -1,2 +1,10 @@
 venv/
 .venv/
+__pycache__/
+*.pyc
+*.pyo
+inventory.db
+temp_upload.*
+models/*.bin
+models/*.pt
+models/*.pth

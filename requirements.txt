@@ -1,0 +1,9 @@
+torch
+torchvision
+pillow
+huggingface-hub
+datasets
+streamlit
+transformers
+flask
+flask-cors

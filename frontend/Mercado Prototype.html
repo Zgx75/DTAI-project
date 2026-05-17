@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#F6F0E4" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Mercado" />
+<title>Mercado · 食材掃描</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700&family=Noto+Serif+TC:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" />
+
+<style>
+  :root {
+    --bg-app:    #F6F0E4;
+    --bg-desk:   #1F1B16;
+    --paper:     #FAF6EE;
+    --terra:     #C24A2E;
+    --ink:       #1F1B16;
+    --ink-soft:  rgba(250,246,238,0.5);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  html { background: var(--bg-app); }
+  body {
+    font-family: "Inter", "Noto Sans TC", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    color: var(--ink);
+    min-height: 100dvh;
+    overscroll-behavior-y: none;
+  }
+
+  /* ─── mobile (default): edge-to-edge full screen ────────── */
+  .app-frame {
+    width: 100%;
+    min-height: 100dvh;
+    background: var(--bg-app);
+    position: relative;
+    overflow: hidden;
+    /* protect against bottom safe area for content sticking to bottom */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* ─── desktop: editorial backdrop + centred phone-width card ─ */
+  @media (min-width: 720px) {
+    html, body { background: var(--bg-desk); }
+    body {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 100dvh;
+      color: var(--paper);
+    }
+
+    .desk-chrome {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      padding: 28px 36px 0;
+    }
+    .desk-chrome .brand {
+      font-family: "DM Serif Display", "Noto Serif TC", Georgia, serif;
+      font-size: 28px; line-height: 1; letter-spacing: -0.4px;
+    }
+    .desk-chrome .brand em { color: var(--terra); font-style: italic; }
+    .desk-chrome .meta {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 10.5px; letter-spacing: 1.6px;
+      text-transform: uppercase; color: var(--ink-soft);
+    }
+    .desk-chrome .meta span.dot { color: var(--terra); margin: 0 8px; }
+
+    .desk-stage {
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px 36px;
+      min-height: 0;
+    }
+    .app-frame {
+      width: 100%;
+      max-width: 440px;
+      min-height: min(100dvh - 140px, 880px);
+      max-height: calc(100dvh - 120px);
+      overflow: auto;
+      border-radius: 22px;
+      box-shadow:
+        0 24px 60px rgba(0,0,0,0.5),
+        0 0 0 1px rgba(250,246,238,0.06);
+    }
+    /* on desktop the app gets its own scroll instead of body scroll */
+    .app-frame { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.15) transparent; }
+
+    .desk-foot {
+      padding: 0 36px 22px;
+      display: flex; justify-content: space-between; align-items: center; gap: 24px;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 10.5px; letter-spacing: 1.5px;
+      color: var(--ink-soft); text-transform: uppercase;
+    }
+    .desk-foot .legend, .desk-foot .stack {
+      border-top: 1px solid rgba(250,246,238,0.16);
+      padding-top: 12px;
+    }
+    .desk-foot .legend { flex: 1; min-width: 0; }
+    .desk-foot .stack { white-space: nowrap; }
+    .desk-foot .stack b { color: var(--paper); font-weight: 500; }
+    .desk-foot .pill {
+      display: inline-flex; padding: 1px 6px;
+      border: 0.5px dashed rgba(194,74,46,0.6);
+      color: var(--terra);
+      border-radius: 3px;
+      font-size: 9px; letter-spacing: 0.6px;
+      margin-right: 6px;
+    }
+  }
+
+  /* ─── hide desktop chrome on mobile ─────────────────────── */
+  @media (max-width: 719px) {
+    .desk-chrome, .desk-foot { display: none; }
+    .desk-stage { display: contents; }
+  }
+
+  /* ─── screen transition ─────────────────────────────────── */
+  @keyframes screen-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── any image / button inherits font ── */
+  button { font-family: inherit; }
+</style>
+</head>
+<body>
+
+  <header class="desk-chrome">
+    <div class="brand">Mercado<em>.</em></div>
+    <div class="meta">
+      食材掃描 + 食譜推薦
+      <span class="dot">·</span>
+      DTAI prototype v0.1
+      <span class="dot">·</span>
+      17.05.26
+    </div>
+  </header>
+
+  <main class="desk-stage">
+    <div class="app-frame" id="app-frame">
+      <div id="root"></div>
+    </div>
+  </main>
+
+  <footer class="desk-foot">
+    <div class="legend">
+      <span class="pill">· MOCK</span>後端尚未提供的欄位,前端暫以假資料佔位
+    </div>
+    <div class="stack">
+      backend · <b>ResNet-50</b> + <b>CLIP</b> · 90 種食材 · 4 種肉類
+    </div>
+  </footer>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="data.jsx"></script>
+  <script type="text/babel" src="mercado-prototype.jsx"></script>
+
+  <script type="text/babel">
+    function init() {
+      if (typeof MercadoApp === 'undefined') { setTimeout(init, 30); return; }
+      ReactDOM.createRoot(document.getElementById('root')).render(<MercadoApp/>);
+    }
+    init();
+  </script>
+</body>
+</html>
