@@ -12,9 +12,18 @@ def init_db():
     CREATE TABLE IF NOT EXISTS inventory (
         item_name TEXT PRIMARY KEY,
         quantity INTEGER NOT NULL DEFAULT 0,
-        last_added_at TEXT
+        last_added_at TEXT,
+        expiry_date TEXT,
+        location TEXT
     )
     """)
+
+    # migrate existing DB that may not have the new columns
+    for col, typedef in [("expiry_date", "TEXT"), ("location", "TEXT")]:
+        try:
+            cursor.execute(f"ALTER TABLE inventory ADD COLUMN {col} {typedef}")
+        except Exception:
+            pass
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS inventory_logs (
@@ -30,20 +39,22 @@ def init_db():
     conn.close()
 
 
-def add_item(item_name, confidence):
+def add_item(item_name, confidence, expiry_date=None, location=None):
     now = datetime.now().isoformat(timespec="seconds")
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("""
-    INSERT INTO inventory (item_name, quantity, last_added_at)
-    VALUES (?, 1, ?)
+    INSERT INTO inventory (item_name, quantity, last_added_at, expiry_date, location)
+    VALUES (?, 1, ?, ?, ?)
     ON CONFLICT(item_name)
     DO UPDATE SET
         quantity = quantity + 1,
-        last_added_at = excluded.last_added_at
-    """, (item_name, now))
+        last_added_at = excluded.last_added_at,
+        expiry_date = COALESCE(excluded.expiry_date, inventory.expiry_date),
+        location    = COALESCE(excluded.location,    inventory.location)
+    """, (item_name, now, expiry_date, location))
 
     cursor.execute("""
     INSERT INTO inventory_logs (item_name, action, confidence, created_at)
@@ -59,7 +70,7 @@ def get_inventory():
     cursor = conn.cursor()
 
     cursor.execute("""
-    SELECT item_name, quantity, last_added_at
+    SELECT item_name, quantity, last_added_at, expiry_date, location
     FROM inventory
     ORDER BY item_name
     """)

@@ -50,7 +50,14 @@ def scan():
 def get_inv():
     rows = get_inventory()
     items = [
-        {"id": i + 1, "item_name": r[0], "quantity": r[1], "last_added_at": r[2]}
+        {
+            "id": i + 1,
+            "item_name":    r[0],
+            "quantity":     r[1],
+            "last_added_at": r[2],
+            "expiry_date":  r[3],
+            "location":     r[4],
+        }
         for i, r in enumerate(rows)
     ]
     return jsonify(items)
@@ -61,7 +68,12 @@ def post_inv():
     data = request.get_json(force=True, silent=True) or {}
     if "item_name" not in data:
         return jsonify({"error": "item_name required"}), 400
-    add_item(data["item_name"], data.get("confidence", 0.0))
+    add_item(
+        data["item_name"],
+        data.get("confidence", 0.0),
+        expiry_date=data.get("expiry_date") or None,
+        location=data.get("location") or None,
+    )
     return jsonify({"ok": True}), 201
 
 

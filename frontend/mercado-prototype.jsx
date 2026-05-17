@@ -1,10 +1,17 @@
 // Interactive Mercado prototype — connected to Flask backend.
-// Real: POST /scan, GET /inventory, POST /inventory.
-// Still mock: daysLeft (needs OCR), recipes (no recipe DB yet).
+// Real: POST /scan, GET/POST /inventory (incl. expiry_date + location).
+// Still mock: recipes (no recipe DB yet).
 
 const { useState, useEffect, useRef } = React;
 
-const API_BASE = '';  // same-origin when served by Flask (python api.py)
+const API_BASE = '';
+
+// days between today and an ISO date string; null if no date
+const calcDaysLeft = (isoDate) => {
+  if (!isoDate) return null;
+  const diff = new Date(isoDate) - new Date();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+};
 
 // ─── theme ───────────────────────────────────────────────────
 const M = {
@@ -26,8 +33,7 @@ const Mock = ({ children = 'mock', tone = 'default' }) => (
     display:'inline-flex', alignItems:'center', gap:3,
     padding:'1px 6px', marginLeft:6,
     fontFamily: M.mono, fontSize: 9, letterSpacing: 0.6,
-    color: M.terra,
-    border: `0.5px dashed ${M.terra}77`,
+    color: M.terra, border: `0.5px dashed ${M.terra}77`,
     borderRadius: 3, textTransform:'uppercase',
     verticalAlign: 'middle', whiteSpace:'nowrap',
     background: tone === 'inverse' ? 'rgba(250,246,238,0.12)' : 'rgba(194,74,46,0.06)',
@@ -39,8 +45,7 @@ const Mock = ({ children = 'mock', tone = 'default' }) => (
 const Rule = ({ label, no, right, light }) => (
   <div style={{
     display:'flex', alignItems:'baseline', gap:8, padding:'0 22px',
-    fontFamily: M.mono, fontSize: 9.5, letterSpacing: 1.5,
-    textTransform:'uppercase',
+    fontFamily: M.mono, fontSize: 9.5, letterSpacing: 1.5, textTransform:'uppercase',
     color: light ? 'rgba(250,246,238,0.8)' : M.ink2,
   }}>
     {no && <span style={{ color: M.terra, fontWeight:600 }}>№ {no}</span>}
@@ -52,8 +57,7 @@ const Rule = ({ label, no, right, light }) => (
 
 const Btn = ({ children, onClick, primary, flex=1, dark }) => (
   <button onClick={onClick} style={{
-    flex,
-    border: `1px solid ${M.ink}`,
+    flex, border: `1px solid ${M.ink}`,
     background: primary ? M.ink : (dark ? 'transparent' : M.paper),
     color: primary ? M.paper : (dark ? M.paper : M.ink),
     padding: '16px 0', fontFamily: M.serif, fontSize: 17,
@@ -68,8 +72,51 @@ const Btn = ({ children, onClick, primary, flex=1, dark }) => (
 
 // ─── 01 Home ─────────────────────────────────────────────────
 function Home({ nav, inventory }) {
-  const expiring = FOODS.filter(f => f.daysLeft <= 2).slice(0, 3);
   const totalCount = inventory !== null ? inventory.length : FOODS.length;
+
+  // use real inventory expiry data if available, fall back to mock FOODS
+  const expiringItems = inventory !== null
+    ? inventory
+        .map(item => ({ ...item, daysLeft: calcDaysLeft(item.expiry_date) }))
+        .filter(item => item.daysLeft !== null && item.daysLeft <= 2)
+        .slice(0, 3)
+    : FOODS.filter(f => f.daysLeft <= 2).slice(0, 3);
+
+  const renderExpiringRow = (item, i) => {
+    const isReal = inventory !== null;
+    const f = isReal
+      ? (foodById(item.item_name) || foodByName(item.item_name) || {})
+      : item;
+    const display = { ...f, zh: f.zh || item.item_name, en: f.en || item.item_name };
+    const dl = isReal ? item.daysLeft : item.daysLeft;
+
+    return (
+      <div key={isReal ? item.item_name : item.id}
+        onClick={() => nav('confirm-existing', isReal ? item.item_name : item.id)}
+        style={{ display:'flex', gap:14, alignItems:'center', cursor:'pointer', padding:'6px 0', borderRadius:4, transition:'background .12s' }}
+        onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.025)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+      >
+        <FoodImage food={display} w={64} h={84} radius={2} label={false} />
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:'flex', alignItems:'baseline', gap:6, marginBottom:2 }}>
+            <span style={{ fontFamily: M.mono, fontSize:10, color: M.ink3, letterSpacing:1 }}>{String(i+1).padStart(2,'0')}</span>
+            <span style={{ fontFamily: M.mono, fontSize:9, color: M.ink3, letterSpacing:1, textTransform:'uppercase' }}>{display.cat || '蔬果'}</span>
+          </div>
+          <div style={{ fontFamily: M.serif, fontSize:22, lineHeight:1.1 }}>{display.zh}</div>
+          <div style={{ fontStyle:'italic', fontSize:12, color: M.ink2 }}>{display.en}</div>
+        </div>
+        <div style={{ textAlign:'right' }}>
+          <div style={{ fontFamily: M.serif, fontSize:32, lineHeight:1, letterSpacing:-0.5, color: dl<=0 ? M.terra : M.ink }}>
+            {dl<=0 ? '今' : dl}
+          </div>
+          <div style={{ fontFamily: M.mono, fontSize:9, color: M.ink3, letterSpacing:1, marginTop:2 }}>
+            {dl<=0 ? 'EXPIRES' : 'DAYS LEFT'}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div style={{ width:'100%', minHeight:'100%', background: M.bg, color: M.ink, fontFamily: M.sans }}>
@@ -84,48 +131,24 @@ function Home({ nav, inventory }) {
           Today's<br/><span style={{ fontStyle:'italic', color: M.terra }}>harvest.</span>
         </div>
         <div style={{ marginTop:10, fontSize:13, color: M.ink2, lineHeight:1.5 }}>
-          冰箱裡有 {totalCount} 樣食材;{expiring.length} 樣建議今明兩天消化完。
-          <Mock>過期天數待 OCR / 規則表</Mock>
+          冰箱裡有 {totalCount} 樣食材
+          {expiringItems.length > 0 && `；${expiringItems.length} 樣建議今明兩天消化完`}。
         </div>
       </div>
 
-      <div style={{ padding:'18px 0 8px' }}>
-        <Rule no="01" label="即將過期" right="3 ITEMS" />
-        <div style={{ padding:'14px 22px 0', display:'flex', flexDirection:'column', gap:14 }}>
-          {expiring.map((f, i) => (
-            <div key={f.id} onClick={() => nav('confirm-existing', f.id)} style={{
-              display:'flex', gap:14, alignItems:'center', cursor:'pointer', padding:'6px 0',
-              borderRadius:4, transition:'background .12s',
-            }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.025)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-            >
-              <FoodImage food={f} w={64} h={84} radius={2} label={false} />
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ display:'flex', alignItems:'baseline', gap:6, marginBottom:2 }}>
-                  <span style={{ fontFamily: M.mono, fontSize:10, color: M.ink3, letterSpacing:1 }}>{String(i+1).padStart(2,'0')}</span>
-                  <span style={{ fontFamily: M.mono, fontSize:9, color: M.ink3, letterSpacing:1, textTransform:'uppercase' }}>{f.cat}</span>
-                </div>
-                <div style={{ fontFamily: M.serif, fontSize:22, lineHeight:1.1 }}>{f.zh}</div>
-                <div style={{ fontStyle:'italic', fontSize:12, color: M.ink2 }}>{f.en}</div>
-              </div>
-              <div style={{ textAlign:'right' }}>
-                <div style={{ fontFamily: M.serif, fontSize: 32, lineHeight:1, letterSpacing: -0.5, color: f.daysLeft<=0 ? M.terra : M.ink }}>
-                  {f.daysLeft<=0 ? '今' : f.daysLeft}
-                </div>
-                <div style={{ fontFamily: M.mono, fontSize:9, color: M.ink3, letterSpacing:1, marginTop:2 }}>
-                  {f.daysLeft<=0 ? 'EXPIRES' : 'DAYS LEFT'}
-                </div>
-              </div>
+      {expiringItems.length > 0 && (
+        <div style={{ padding:'18px 0 8px' }}>
+          <Rule no="01" label="即將過期" right={`${expiringItems.length} ITEMS`} />
+          <div style={{ padding:'14px 22px 0', display:'flex', flexDirection:'column', gap:14 }}>
+            {expiringItems.map((item, i) => renderExpiringRow(item, i))}
+          </div>
+          <div style={{ padding:'14px 22px 0' }}>
+            <div onClick={() => nav('inventory')} style={{ fontFamily: M.mono, fontSize: 10, letterSpacing: 1.8, color: M.terra, cursor:'pointer', textTransform:'uppercase' }}>
+              查看完整冰箱 →
             </div>
-          ))}
-        </div>
-        <div style={{ padding:'14px 22px 0' }}>
-          <div onClick={() => nav('inventory')} style={{ fontFamily: M.mono, fontSize: 10, letterSpacing: 1.8, color: M.terra, cursor:'pointer', textTransform:'uppercase' }}>
-            查看完整冰箱 →
           </div>
         </div>
-      </div>
+      )}
 
       <div style={{ padding:'24px 0 16px' }}>
         <Rule no="02" label="今日提案" right={<span>FROM YOUR KITCHEN<Mock>食譜資料庫</Mock></span>} />
@@ -140,13 +163,9 @@ function Home({ nav, inventory }) {
               onMouseLeave={e => e.currentTarget.style.opacity = 1}
             >
               <div style={{ flex:1 }}>
-                <div style={{ fontFamily: M.mono, fontSize:10, color: M.terra, letterSpacing:1.5, marginBottom:4 }}>
-                  {r.min} MIN · {r.kcal} KCAL
-                </div>
+                <div style={{ fontFamily: M.mono, fontSize:10, color: M.terra, letterSpacing:1.5, marginBottom:4 }}>{r.min} MIN · {r.kcal} KCAL</div>
                 <div style={{ fontFamily: M.serif, fontSize:22, lineHeight:1.15, marginBottom:6 }}>{r.zh}</div>
-                <div style={{ fontStyle:'italic', fontSize:12, color: M.ink2 }}>
-                  消化 {r.uses.map(u => foodById(u).zh).join('、')}
-                </div>
+                <div style={{ fontStyle:'italic', fontSize:12, color: M.ink2 }}>消化 {r.uses.map(u => foodById(u).zh).join('、')}</div>
               </div>
               <div style={{ display:'flex', gap:4, flexShrink:0 }}>
                 {r.uses.slice(0,2).map(u => <FoodImage key={u} food={foodById(u)} w={42} h={56} radius={2} label={false}/>)}
@@ -188,20 +207,12 @@ function Scan({ nav, back, onScanComplete }) {
 
   return (
     <div style={{ width:'100%', minHeight:'100%', background:'#1A1714', color: M.paper, fontFamily: M.sans, position:'relative' }}>
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        style={{ display:'none' }}
-        onChange={e => handleFile(e.target.files?.[0])}
-      />
+      <input ref={fileRef} type="file" accept="image/*" capture="environment"
+        style={{ display:'none' }} onChange={e => handleFile(e.target.files?.[0])} />
 
       <div style={{ height: 'calc(env(safe-area-inset-top, 0px) + 18px)' }} />
       <div style={{ padding:'10px 22px 0', display:'flex', justifyContent:'space-between' }}>
-        <div onClick={back} style={{ cursor:'pointer', fontFamily: M.mono, fontSize:10, letterSpacing:2, color:'rgba(250,246,238,0.7)' }}>
-          ← MERCADO · CAPTURE
-        </div>
+        <div onClick={back} style={{ cursor:'pointer', fontFamily: M.mono, fontSize:10, letterSpacing:2, color:'rgba(250,246,238,0.7)' }}>← MERCADO · CAPTURE</div>
         <div style={{ fontFamily: M.mono, fontSize:10, letterSpacing:2, color:'rgba(250,246,238,0.7)' }}>AUTO ⃝</div>
       </div>
 
@@ -214,26 +225,18 @@ function Scan({ nav, back, onScanComplete }) {
       <div style={{ position:'relative', margin:'0 22px', aspectRatio:'3/4', background:'#0F0D0B', overflow:'hidden' }}>
         <FoodImage food={foodById('tomato')} w="100%" h="100%" label={false} />
         <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(0,0,0,0.55) 100%)' }}/>
-        {[
-          {top:14, left:14, brT:1, brL:1}, {top:14, right:14, brT:1, brR:1},
-          {bottom:14, left:14, brB:1, brL:1}, {bottom:14, right:14, brB:1, brR:1},
-        ].map((p, i) => (
-          <div key={i} style={{
-            position:'absolute', width:22, height:22, ...p,
-            borderTop: p.brT?`1px solid ${M.paper}`:0, borderLeft: p.brL?`1px solid ${M.paper}`:0,
-            borderRight: p.brR?`1px solid ${M.paper}`:0, borderBottom: p.brB?`1px solid ${M.paper}`:0,
-          }}/>
+        {[{top:14,left:14,brT:1,brL:1},{top:14,right:14,brT:1,brR:1},{bottom:14,left:14,brB:1,brL:1},{bottom:14,right:14,brB:1,brR:1}].map((p,i) => (
+          <div key={i} style={{ position:'absolute', width:22, height:22, ...p,
+            borderTop:p.brT?`1px solid ${M.paper}`:0, borderLeft:p.brL?`1px solid ${M.paper}`:0,
+            borderRight:p.brR?`1px solid ${M.paper}`:0, borderBottom:p.brB?`1px solid ${M.paper}`:0 }}/>
         ))}
         {scanning ? (
-          <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center',
-            background:'rgba(0,0,0,0.65)', flexDirection:'column', gap:10 }}>
+          <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.65)', flexDirection:'column', gap:10 }}>
             <div style={{ fontFamily: M.mono, fontSize:11, letterSpacing:2, color: M.paper }}>SCANNING…</div>
             <div style={{ fontFamily: M.mono, fontSize:9, color:'rgba(250,246,238,0.5)', letterSpacing:1 }}>RUNNING MODEL</div>
           </div>
         ) : (
-          <div style={{ position:'absolute', left:14, bottom:14, padding:'6px 10px',
-            background:'rgba(250,246,238,0.92)', color: M.ink,
-            fontFamily: M.mono, fontSize:10, letterSpacing:1, textTransform:'uppercase' }}>
+          <div style={{ position:'absolute', left:14, bottom:14, padding:'6px 10px', background:'rgba(250,246,238,0.92)', color: M.ink, fontFamily: M.mono, fontSize:10, letterSpacing:1, textTransform:'uppercase' }}>
             <span style={{ color: M.terra }}>● </span>READY · TAP SHUTTER
           </div>
         )}
@@ -241,11 +244,7 @@ function Scan({ nav, back, onScanComplete }) {
       </div>
 
       {scanError && (
-        <div style={{ margin:'10px 22px 0', padding:'8px 12px',
-          background:'rgba(194,74,46,0.18)', color: M.terra,
-          fontFamily: M.mono, fontSize:10, letterSpacing:1 }}>
-          {scanError}
-        </div>
+        <div style={{ margin:'10px 22px 0', padding:'8px 12px', background:'rgba(194,74,46,0.18)', color: M.terra, fontFamily: M.mono, fontSize:10, letterSpacing:1 }}>{scanError}</div>
       )}
 
       <div style={{ padding:'18px 22px 0', textAlign:'center' }}>
@@ -254,27 +253,19 @@ function Scan({ nav, back, onScanComplete }) {
       </div>
 
       <div style={{ marginTop: 36, display:'flex', justifyContent:'center', alignItems:'center', gap:36, paddingBottom: 48 }}>
-        <div style={{ fontFamily: M.mono, fontSize:10, color:'rgba(250,246,238,0.7)', letterSpacing:2, width:50, textAlign:'center' }}>
-          FLASH<br/>OFF
-        </div>
-        <div
-          onClick={() => { if (!scanning) fileRef.current?.click(); }}
-          style={{
-            width:76, height:76, borderRadius:'50%',
-            border:`2px solid ${scanning ? M.terra : M.paper}`,
-            display:'flex', alignItems:'center', justifyContent:'center',
-            cursor: scanning ? 'not-allowed' : 'pointer',
-            transition:'transform .12s ease', opacity: scanning ? 0.7 : 1,
-          }}
+        <div style={{ fontFamily: M.mono, fontSize:10, color:'rgba(250,246,238,0.7)', letterSpacing:2, width:50, textAlign:'center' }}>FLASH<br/>OFF</div>
+        <div onClick={() => { if (!scanning) fileRef.current?.click(); }} style={{
+          width:76, height:76, borderRadius:'50%', border:`2px solid ${scanning ? M.terra : M.paper}`,
+          display:'flex', alignItems:'center', justifyContent:'center',
+          cursor: scanning ? 'not-allowed' : 'pointer', transition:'transform .12s ease', opacity: scanning ? 0.7 : 1,
+        }}
           onMouseDown={e => { if (!scanning) e.currentTarget.style.transform = 'scale(0.92)'; }}
           onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
           onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
         >
           <div style={{ width:62, height:62, borderRadius:'50%', background: scanning ? M.terra : M.paper }} />
         </div>
-        <div style={{ fontFamily: M.mono, fontSize:10, color: M.terra, letterSpacing:2, width:50, textAlign:'center' }}>
-          UPLOAD<br/>•
-        </div>
+        <div style={{ fontFamily: M.mono, fontSize:10, color: M.terra, letterSpacing:2, width:50, textAlign:'center' }}>UPLOAD<br/>•</div>
       </div>
     </div>
   );
@@ -282,8 +273,7 @@ function Scan({ nav, back, onScanComplete }) {
 
 // ─── 03 Confirm ──────────────────────────────────────────────
 const Row = ({ k, v, sub, terra, mock }) => (
-  <div style={{ padding:'12px 0', borderBottom:`0.5px solid ${M.ink}22`,
-    display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
+  <div style={{ padding:'12px 0', borderBottom:`0.5px solid ${M.ink}22`, display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
     <div style={{ fontFamily: M.mono, fontSize:10, color: M.ink2, letterSpacing:1.5, textTransform:'uppercase' }}>
       {k}{mock && <Mock>{mock}</Mock>}
     </div>
@@ -294,44 +284,42 @@ const Row = ({ k, v, sub, terra, mock }) => (
   </div>
 );
 
-function Confirm({ nav, back, onCommit, scanResult, foodId='tomato', presetConf, daysLeft }) {
+function Confirm({ nav, back, onCommit, scanResult, foodId='tomato', presetConf, existingItem }) {
   const isRealScan = !!scanResult;
   const className = scanResult?.class_name || foodId;
-
-  // Resolve display: FOODS exact-id match first, then FOOD_MAP by class_name
   const f = foodById(className) || (() => {
     const d = foodByName(className);
     return { id: className, conf: scanResult?.confidence ?? 0.5, daysLeft: null, ...d };
   })();
 
   const conf = isRealScan ? scanResult.confidence : (presetConf !== undefined ? presetConf : f.conf);
-  const dl = daysLeft !== undefined ? daysLeft : f.daysLeft;
   const modelLabel = scanResult?.source === 'meat_clip_model' ? 'CLIP zero-shot'
                    : isRealScan ? 'ResNet-50'
                    : (f.cat === '肉類' ? 'CLIP zero-shot' : 'ResNet-50');
 
+  // editable fields — pre-fill from existing inventory item if available
+  const [expiryDate, setExpiryDate] = useState(existingItem?.expiry_date || '');
+  const [location, setLocation]     = useState(existingItem?.location    || '冷藏');
+
   const handleCommit = () => {
-    if (onCommit) onCommit(className, conf);
+    if (onCommit) onCommit(className, conf, expiryDate || null, location);
     nav('inventory');
   };
+
+  const dl = expiryDate ? calcDaysLeft(expiryDate) : null;
 
   return (
     <div style={{ width:'100%', minHeight:'100%', background: M.bg, color: M.ink, fontFamily: M.sans }}>
       <div style={{ height: 'calc(env(safe-area-inset-top, 0px) + 18px)' }} />
       <div style={{ padding:'10px 22px 0', display:'flex', justifyContent:'space-between' }}>
-        <div onClick={back} style={{ cursor:'pointer', fontFamily: M.mono, fontSize:10, letterSpacing:2, color: M.ink2 }}>
-          ← CAPTURE · RESULT
-        </div>
-        <div style={{ fontFamily: M.mono, fontSize:10, letterSpacing:2, color: M.ink2 }}>
-          {isRealScan ? 'LIVE' : '16:42'}
-        </div>
+        <div onClick={back} style={{ cursor:'pointer', fontFamily: M.mono, fontSize:10, letterSpacing:2, color: M.ink2 }}>← CAPTURE · RESULT</div>
+        <div style={{ fontFamily: M.mono, fontSize:10, letterSpacing:2, color: M.ink2 }}>{isRealScan ? 'LIVE' : '16:42'}</div>
       </div>
 
       <div style={{ padding:'14px 22px 16px' }}>
         <div style={{ aspectRatio:'4/5', position:'relative' }}>
           <FoodImage food={f} w="100%" h="100%" label={false}/>
-          <div style={{ position:'absolute', top:10, left:10, background: M.paper, color: M.ink, padding:'4px 8px',
-            fontFamily: M.mono, fontSize:9, letterSpacing:1.5 }}>
+          <div style={{ position:'absolute', top:10, left:10, background: M.paper, color: M.ink, padding:'4px 8px', fontFamily: M.mono, fontSize:9, letterSpacing:1.5 }}>
             {isRealScan ? `SCAN · ${modelLabel}` : `№ ${String(FOODS.indexOf(f)+1).padStart(3,'0')} · ${modelLabel}`}
           </div>
         </div>
@@ -347,12 +335,46 @@ function Confirm({ nav, back, onCommit, scanResult, foodId='tomato', presetConf,
       </div>
 
       <div style={{ padding:'14px 22px 0' }}>
-        <Row k="到期日"
-             v={dl != null ? (dl<=0 ? '今天' : `${dl} 天後`) : '—'}
-             sub={`from ${new Date().toLocaleDateString('en-GB')}`}
-             terra mock="OCR / 規則表" />
+        {/* 到期日 — date input */}
+        <div style={{ padding:'12px 0', borderBottom:`0.5px solid ${M.ink}22`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div style={{ fontFamily: M.mono, fontSize:10, color: M.ink2, letterSpacing:1.5, textTransform:'uppercase' }}>到期日</div>
+          <input
+            type="date"
+            value={expiryDate}
+            onChange={e => setExpiryDate(e.target.value)}
+            style={{
+              border:'none', background:'transparent', outline:'none',
+              fontFamily: M.serif, fontSize:18, color: expiryDate ? (dl<=2 ? M.terra : M.ink) : M.ink3,
+              textAlign:'right', cursor:'pointer', minWidth:0,
+            }}
+          />
+        </div>
+
+        {expiryDate && (
+          <div style={{ padding:'4px 0 8px', textAlign:'right', fontFamily: M.mono, fontSize:9, color: dl<=0 ? M.terra : M.ink3, letterSpacing:1 }}>
+            {dl<=0 ? '今天到期' : dl===1 ? '明天到期' : `${dl} 天後到期`}
+          </div>
+        )}
+
         <Row k="加入數量" v="× 1" />
-        <Row k="存放位置" v="冷藏 · 上層" mock="未串接" />
+
+        {/* 存放位置 — 3-way toggle */}
+        <div style={{ padding:'12px 0', borderBottom:`0.5px solid ${M.ink}22`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div style={{ fontFamily: M.mono, fontSize:10, color: M.ink2, letterSpacing:1.5, textTransform:'uppercase' }}>存放位置</div>
+          <div style={{ display:'flex', gap:6 }}>
+            {['冷藏', '冷凍', '常溫'].map(loc => (
+              <div key={loc} onClick={() => setLocation(loc)} style={{
+                padding:'4px 10px',
+                background: location === loc ? M.ink : 'transparent',
+                color: location === loc ? M.paper : M.ink,
+                border: `0.5px solid ${M.ink}`,
+                fontFamily: M.mono, fontSize:9, letterSpacing:1,
+                cursor:'pointer', transition:'all .12s',
+              }}>{loc}</div>
+            ))}
+          </div>
+        </div>
+
         <Row k="信心分數" v={`${conf.toFixed(2)} · ${conf>0.8?'高':conf>0.5?'中':'低'}`} />
         <Row k="使用模型" v={modelLabel} />
       </div>
@@ -380,22 +402,25 @@ function Inventory({ nav, back, justAdded, inventory }) {
 
   const displayItems = (inventory || []).map(item => {
     const base = foodById(item.item_name) || foodByName(item.item_name) || {};
+    const daysLeft = calcDaysLeft(item.expiry_date);
     return {
-      id:       item.item_name,
-      zh:       base.zh    || item.item_name.replace(/_/g, ' '),
-      en:       base.en    || item.item_name.replace(/_/g, ' '),
-      cat:      base.cat   || '其他',
-      c1:       base.c1    || '#AAA89C',
-      c2:       base.c2    || '#5C5A54',
-      shape:    base.shape || 'circle',
-      daysLeft: base.daysLeft ?? null,
-      quantity: item.quantity,
+      id:        item.item_name,
+      zh:        base.zh    || item.item_name.replace(/_/g, ' '),
+      en:        base.en    || item.item_name.replace(/_/g, ' '),
+      cat:       base.cat   || '其他',
+      c1:        base.c1    || '#AAA89C',
+      c2:        base.c2    || '#5C5A54',
+      shape:     base.shape || 'circle',
+      daysLeft,
+      quantity:    item.quantity,
+      expiry_date: item.expiry_date,
+      location:    item.location,
     };
   });
 
   const sorted = [...displayItems].sort((a, b) => (a.daysLeft ?? 999) - (b.daysLeft ?? 999));
-  const expiringCount = displayItems.filter(f => f.daysLeft != null && f.daysLeft <= 2 && f.daysLeft > 0).length;
-  const overdueCount  = displayItems.filter(f => f.daysLeft != null && f.daysLeft <= 0).length;
+  const expiringCount = displayItems.filter(f => f.daysLeft !== null && f.daysLeft <= 2 && f.daysLeft > 0).length;
+  const overdueCount  = displayItems.filter(f => f.daysLeft !== null && f.daysLeft <= 0).length;
 
   const toastName = justAdded
     ? (foodById(justAdded)?.zh || foodByName(justAdded)?.zh || justAdded)
@@ -419,9 +444,6 @@ function Inventory({ nav, back, justAdded, inventory }) {
           <Stat n={isLoading ? '…' : (expiringCount || '—')} l="EXPIRING" terra={expiringCount > 0} />
           <Stat n={isLoading ? '…' : (overdueCount  || '—')} l="OVERDUE"  terra={overdueCount  > 0} />
         </div>
-        <div style={{ marginTop:10, fontSize:11, color: M.ink3 }}>
-          <Mock>EXPIRING/OVERDUE 暫由 mock 天數計算</Mock>
-        </div>
       </div>
 
       {isLoading ? (
@@ -434,25 +456,22 @@ function Inventory({ nav, back, justAdded, inventory }) {
       ) : sorted.map((f, i) => (
         <div key={`${f.id}-${i}`}
           onClick={() => nav('confirm-existing', f.id)}
-          style={{
-            display:'flex', alignItems:'center', gap:14, padding:'14px 22px',
-            borderBottom:`0.5px solid ${M.ink}22`, cursor:'pointer', transition:'background .12s',
-          }}
+          style={{ display:'flex', alignItems:'center', gap:14, padding:'14px 22px', borderBottom:`0.5px solid ${M.ink}22`, cursor:'pointer', transition:'background .12s' }}
           onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.025)'}
           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
         >
-          <div style={{ fontFamily: M.mono, fontSize:11, color: M.ink3, width:24, letterSpacing:1 }}>
-            {String(i+1).padStart(2,'0')}
-          </div>
+          <div style={{ fontFamily: M.mono, fontSize:11, color: M.ink3, width:24, letterSpacing:1 }}>{String(i+1).padStart(2,'0')}</div>
           <FoodImage food={f} w={42} h={56} radius={2} label={false}/>
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ fontFamily: M.serif, fontSize:20, lineHeight:1.05 }}>{f.zh}</div>
             <div style={{ fontFamily: M.mono, fontSize:9, color: M.ink3, letterSpacing:1.2, marginTop:2 }}>
-              {f.cat.toUpperCase()} · {f.en.toUpperCase()}{f.quantity > 1 ? ` · ×${f.quantity}` : ''}
+              {f.cat.toUpperCase()} · {f.en.toUpperCase()}
+              {f.location ? ` · ${f.location}` : ''}
+              {f.quantity > 1 ? ` · ×${f.quantity}` : ''}
             </div>
           </div>
           <div style={{ textAlign:'right' }}>
-            {f.daysLeft != null ? (
+            {f.daysLeft !== null ? (
               <>
                 <div style={{ fontFamily: M.serif, fontSize:22, lineHeight:1, color: f.daysLeft<=2 ? M.terra : M.ink }}>
                   {f.daysLeft<=0 ? '今' : f.daysLeft}
@@ -550,11 +569,8 @@ function Recipe({ nav, back, recipeId='r1' }) {
         <Rule no="ii" label="作法" right={`${steps.length} STEPS`}/>
         <div style={{ padding:'14px 22px 0' }}>
           {steps.map((s, i) => (
-            <div key={i} style={{ display:'flex', gap:14, padding:'12px 0',
-              borderBottom: i===steps.length-1 ? 'none' : `0.5px solid ${M.ink}22` }}>
-              <div style={{ fontFamily: M.serif, fontSize:24, color: M.terra, lineHeight:1, width:28, flexShrink:0 }}>
-                {String(i+1).padStart(2,'0')}
-              </div>
+            <div key={i} style={{ display:'flex', gap:14, padding:'12px 0', borderBottom: i===steps.length-1 ? 'none' : `0.5px solid ${M.ink}22` }}>
+              <div style={{ fontFamily: M.serif, fontSize:24, color: M.terra, lineHeight:1, width:28, flexShrink:0 }}>{String(i+1).padStart(2,'0')}</div>
               <div style={{ fontFamily: M.serif, fontSize:16, lineHeight:1.4 }}>{s}</div>
             </div>
           ))}
@@ -576,7 +592,7 @@ function MercadoApp() {
   const [animKey, setAnimKey]     = useState(0);
   const [justAdded, setJustAdded] = useState(null);
   const [scanResult, setScanResult] = useState(null);
-  const [inventory, setInventory]   = useState(null);  // null = loading
+  const [inventory, setInventory]   = useState(null);
 
   const fetchInventory = () => {
     fetch(`${API_BASE}/inventory`)
@@ -618,17 +634,27 @@ function MercadoApp() {
     nav('confirm');
   };
 
-  const onCommit = async (itemName, confidence) => {
+  const onCommit = async (itemName, confidence, expiryDate, location) => {
     try {
       await fetch(`${API_BASE}/inventory`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_name: itemName, confidence }),
+        body: JSON.stringify({
+          item_name:   itemName,
+          confidence,
+          expiry_date: expiryDate || null,
+          location:    location   || null,
+        }),
       });
     } catch (e) { /* toast still shows */ }
     setJustAdded(itemName);
     fetchInventory();
   };
+
+  // find the full inventory item for confirm-existing (to pre-fill date/location)
+  const existingItem = params['confirm-existing']
+    ? (inventory || []).find(i => i.item_name === params['confirm-existing'])
+    : null;
 
   let view;
   switch (screen) {
@@ -642,7 +668,8 @@ function MercadoApp() {
       view = <Confirm nav={nav} back={back} onCommit={onCommit} scanResult={scanResult} />;
       break;
     case 'confirm-existing':
-      view = <Confirm nav={nav} back={back} onCommit={onCommit} foodId={params['confirm-existing']} />;
+      view = <Confirm nav={nav} back={back} onCommit={onCommit}
+               foodId={params['confirm-existing']} existingItem={existingItem} />;
       break;
     case 'inventory':
       view = <Inventory nav={nav} back={back} justAdded={justAdded} inventory={inventory} />;
