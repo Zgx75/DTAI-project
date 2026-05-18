@@ -1,7 +1,8 @@
 import os
 import tempfile
 from ai_chef import generate_dynamic_recipes, get_current_fridge_items
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
+import json
 from flask_cors import CORS
 from predict_combined import load_all_models, predict_combined
 from db import init_db, add_item, get_inventory
@@ -23,7 +24,27 @@ RECIPES = [
 
 @app.route("/")
 def index():
-    return send_from_directory("frontend", "Mercado Prototype.html")
+    # Serve the prototype HTML but inject an initial recipes payload so
+    # the frontend has immediate access to generated recipes on first load.
+    try:
+        base_path = os.path.join(os.path.dirname(__file__), 'frontend')
+        fp = os.path.join(base_path, 'Mercado Prototype.html')
+        with open(fp, 'r', encoding='utf-8') as fh:
+            html = fh.read()
+
+        try:
+            initial = generate_dynamic_recipes(get_current_fridge_items())
+        except Exception:
+            initial = RECIPES
+
+        inject = f"<script>window.__INITIAL_RECIPES__ = {json.dumps(initial, ensure_ascii=False)};</script>"
+        # insert before closing </body>
+        if '</body>' in html:
+            html = html.replace('</body>', inject + '\n</body>')
+
+        return Response(html, mimetype='text/html')
+    except Exception:
+        return send_from_directory("frontend", "Mercado Prototype.html")
 
 
 @app.route("/scan", methods=["POST"])

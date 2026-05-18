@@ -2,6 +2,8 @@ import sqlite3
 import json
 import random
 import os
+import re
+from datetime import datetime
 from groq import Groq
 from dotenv import load_dotenv
 load_dotenv()
@@ -29,14 +31,14 @@ def get_current_fridge_items():
 # ===================================================
 # 2. 呼叫 Groq API，根據真實庫存，吐出完美符合 React 格式的食譜
 # ===================================================
-def generate_dynamic_recipes():
-    # 💡 修正關鍵：必須先呼叫上面的功能，把真實庫存拿過來！
-    my_items = get_current_fridge_items()
-    
-    # 💡 防呆：如果冰箱現在是空的，隨便模擬幾樣，免得 Demo 翻車
+def generate_dynamic_recipes(items=None):
+    # If caller provided a list of items, use it; otherwise read current fridge
+    my_items = items if items is not None else get_current_fridge_items()
+
+    # Defensive: if fridge is empty, use example items so demo doesn't fail
     if not my_items:
         my_items = ["tomato", "chicken", "apple", "mushroom"]
-        
+
     client = Groq(api_key=GROQ_API_KEY)
     food_str = ", ".join(my_items)
     
@@ -69,25 +71,86 @@ def generate_dynamic_recipes():
     ]
     """
     
+    def try_parse_json(text: str):
+        t = text.strip()
+        # remove leading 'json' if present
+        t = re.sub(r'^\s*json\s*', '', t, flags=re.IGNORECASE).strip()
+        try:
+            return json.loads(t)
+        except json.JSONDecodeError:
+            # try extract outermost array
+            a = t.find('[')
+            b = t.rfind(']')
+            if a != -1 and b != -1 and b > a:
+                candidate = t[a:b+1]
+                # remove trailing commas before closing brackets/braces
+                candidate = re.sub(r',\s*(\]|\})', r'\1', candidate)
+                try:
+                    return json.loads(candidate)
+                except json.JSONDecodeError:
+                    pass
+            # try object
+            a = t.find('{')
+            b = t.rfind('}')
+            if a != -1 and b != -1 and b > a:
+                candidate = t[a:b+1]
+                candidate = re.sub(r',\s*(\]|\})', r'\1', candidate)
+                try:
+                    return json.loads(candidate)
+                except json.JSONDecodeError:
+                    pass
+        return None
+
     try:
+        # first attempt
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7
         )
-        
         result_text = completion.choices[0].message.content.strip()
-        
-        # 幫頑皮的 AI 剝皮防呆
-        if result_text.startswith("```"):
-            result_text = result_text.split("```")[1]
-            if result_text.startswith("json"):
-                result_text = result_text[4:]
-                
-        return json.loads(result_text)
-        
+
+        # strip code fences if any
+        if result_text.startswith('```') or '```' in result_text:
+            result_text = re.sub(r'```(?:json)?', '', result_text)
+            result_text = result_text.replace('```', '')
+
+        parsed = try_parse_json(result_text)
+
+        # retry once with lower temperature if parse failed
+        if parsed is None:
+            try:
+                retry = client.chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0
+                )
+                retry_text = retry.choices[0].message.content.strip()
+                if retry_text.startswith('```') or '```' in retry_text:
+                    retry_text = re.sub(r'```(?:json)?', '', retry_text)
+                    retry_text = retry_text.replace('```', '')
+                parsed = try_parse_json(retry_text)
+            except Exception:
+                parsed = None
+
+        if parsed is None:
+            # persist raw outputs for debugging
+            try:
+                with open('ai_chef_last_failure.txt', 'a', encoding='utf-8') as fh:
+                    fh.write('\n\n==== ' + datetime.now().isoformat() + ' ====\n')
+                    fh.write('PROMPT:\n')
+                    fh.write(prompt + '\n\n')
+                    fh.write('RESULT_TEXT:\n')
+                    fh.write(result_text + '\n\n')
+                    fh.write('PARSED: None\n')
+            except Exception:
+                pass
+            raise ValueError('Failed to parse LLM output as JSON')
+
+        return parsed
+
     except Exception as e:
-        # 萬一 Groq 連線悲劇，吐回原本寫死的第一道菜頂著，確保系統絕對不崩潰
+        # 萬一 Groq 連線悲劇或解析失敗，吐回原本寫死的第一道菜頂著，確保系統絕對不崩潰
         print(f"【Groq Error】: {str(e)}")
         return [
             {"id": "r1", "zh": "番茄菠菜烘蛋", "en": "Tomato Spinach Frittata", "min": 15, "kcal": 340, "uses": ["tomato", "spinach"], "saves": 2, "level": "簡單", "method": "平底鍋"}
