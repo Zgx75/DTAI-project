@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -75,6 +76,50 @@ def post_inv():
         location=data.get("location") or None,
     )
     return jsonify({"ok": True}), 201
+
+
+@app.route("/scan-expiry", methods=["POST"])
+def scan_expiry():
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return jsonify({"error": "GEMINI_API_KEY not set"}), 500
+
+    if "image" not in request.files:
+        return jsonify({"error": "no image field"}), 400
+
+    file = request.files["image"]
+    ext = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
+    if not ext:
+        ext = ".jpg"
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+    try:
+        file.save(tmp.name)
+        tmp.close()
+
+        import google.generativeai as genai
+        import PIL.Image
+
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        img = PIL.Image.open(tmp.name)
+        response = model.generate_content([
+            img,
+            "這是一個食品包裝的照片。請找出上面標示的有效日期、賞味期限或到期日。"
+            "只回傳日期，格式為 YYYY-MM-DD。如果找不到任何日期，只回傳 null。"
+            "不要回傳任何其他文字。"
+        ])
+        text = response.text.strip()
+        match = re.search(r"\d{4}-\d{2}-\d{2}", text)
+        if match:
+            return jsonify({"expiry_date": match.group()})
+        else:
+            return jsonify({"expiry_date": None})
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
 
 
 @app.route("/recipes", methods=["GET"])

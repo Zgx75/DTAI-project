@@ -298,8 +298,33 @@ function Confirm({ nav, back, onCommit, scanResult, foodId='tomato', presetConf,
                    : (f.cat === '肉類' ? 'CLIP zero-shot' : 'ResNet-50');
 
   // editable fields — pre-fill from existing inventory item if available
-  const [expiryDate, setExpiryDate] = useState(existingItem?.expiry_date || '');
-  const [location, setLocation]     = useState(existingItem?.location    || '冷藏');
+  const [expiryDate, setExpiryDate]       = useState(existingItem?.expiry_date || '');
+  const [location, setLocation]           = useState(existingItem?.location    || '冷藏');
+  const [scanningExpiry, setScanningExpiry] = useState(false);
+  const [expiryError, setExpiryError]     = useState(null);
+  const expiryFileRef = useRef(null);
+
+  const handleExpiryFile = async (file) => {
+    if (!file) return;
+    setScanningExpiry(true);
+    setExpiryError(null);
+    const form = new FormData();
+    form.append('image', file);
+    try {
+      const res = await fetch(`${API_BASE}/scan-expiry`, { method: 'POST', body: form });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.expiry_date) {
+        setExpiryDate(data.expiry_date);
+      } else {
+        setExpiryError('找不到日期，請手動輸入');
+      }
+    } catch (e) {
+      setExpiryError('掃描失敗，請手動輸入');
+    } finally {
+      setScanningExpiry(false);
+    }
+  };
 
   const handleCommit = () => {
     if (onCommit) onCommit(className, conf, expiryDate || null, location);
@@ -335,9 +360,23 @@ function Confirm({ nav, back, onCommit, scanResult, foodId='tomato', presetConf,
       </div>
 
       <div style={{ padding:'14px 22px 0' }}>
-        {/* 到期日 — date input */}
-        <div style={{ padding:'12px 0', borderBottom:`0.5px solid ${M.ink}22`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <div style={{ fontFamily: M.mono, fontSize:10, color: M.ink2, letterSpacing:1.5, textTransform:'uppercase' }}>到期日</div>
+        {/* 到期日 — date input + scan button */}
+        <input ref={expiryFileRef} type="file" accept="image/*" capture="environment"
+          style={{ display:'none' }} onChange={e => handleExpiryFile(e.target.files?.[0])} />
+        <div style={{ padding:'12px 0', borderBottom:`0.5px solid ${M.ink}22`, display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <div style={{ fontFamily: M.mono, fontSize:10, color: M.ink2, letterSpacing:1.5, textTransform:'uppercase' }}>到期日</div>
+            <div
+              onClick={() => { if (!scanningExpiry) expiryFileRef.current?.click(); }}
+              style={{
+                padding:'2px 8px', border:`0.5px solid ${M.terra}`, color: M.terra,
+                fontFamily: M.mono, fontSize:9, letterSpacing:1, cursor: scanningExpiry ? 'not-allowed' : 'pointer',
+                opacity: scanningExpiry ? 0.5 : 1, whiteSpace:'nowrap',
+              }}
+            >
+              {scanningExpiry ? 'SCANNING…' : '⌖ 掃描'}
+            </div>
+          </div>
           <input
             type="date"
             value={expiryDate}
@@ -349,6 +388,9 @@ function Confirm({ nav, back, onCommit, scanResult, foodId='tomato', presetConf,
             }}
           />
         </div>
+        {expiryError && (
+          <div style={{ padding:'4px 0', fontFamily: M.mono, fontSize:9, color: M.terra, letterSpacing:1 }}>{expiryError}</div>
+        )}
 
         {expiryDate && (
           <div style={{ padding:'4px 0 8px', textAlign:'right', fontFamily: M.mono, fontSize:9, color: dl<=0 ? M.terra : M.ink3, letterSpacing:1 }}>
