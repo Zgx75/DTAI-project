@@ -4,7 +4,7 @@
 
 const { useState, useEffect, useRef } = React;
 
-const API_BASE = '';
+const API_BASE = 'http://localhost:5000';
 
 // days between today and an ISO date string; null if no date
 const calcDaysLeft = (isoDate) => {
@@ -71,7 +71,7 @@ const Btn = ({ children, onClick, primary, flex=1, dark }) => (
 );
 
 // ─── 01 Home ─────────────────────────────────────────────────
-function Home({ nav, inventory }) {
+function Home({ nav, inventory, recipesState }) {
   const totalCount = inventory !== null ? inventory.length : FOODS.length;
 
   // use real inventory expiry data if available, fall back to mock FOODS
@@ -153,7 +153,7 @@ function Home({ nav, inventory }) {
       <div style={{ padding:'24px 0 16px' }}>
         <Rule no="02" label="今日提案" right={<span>FROM YOUR KITCHEN<Mock>食譜資料庫</Mock></span>} />
         <div style={{ padding:'14px 22px 0' }}>
-          {RECIPES.slice(0,2).map((r, i) => (
+          {(recipesState || RECIPES).slice(0,2).map((r, i) => (
             <div key={r.id} onClick={() => nav('recipe', r.id)} style={{
               borderTop: i===0 ? 'none' : `0.5px solid ${M.ink}33`,
               padding: i===0 ? '0 0 14px' : '14px 0',
@@ -165,10 +165,10 @@ function Home({ nav, inventory }) {
               <div style={{ flex:1 }}>
                 <div style={{ fontFamily: M.mono, fontSize:10, color: M.terra, letterSpacing:1.5, marginBottom:4 }}>{r.min} MIN · {r.kcal} KCAL</div>
                 <div style={{ fontFamily: M.serif, fontSize:22, lineHeight:1.15, marginBottom:6 }}>{r.zh}</div>
-                <div style={{ fontStyle:'italic', fontSize:12, color: M.ink2 }}>消化 {r.uses.map(u => foodById(u).zh).join('、')}</div>
+                <div style={{ fontStyle:'italic', fontSize:12, color: M.ink2 }}>消化 {r.uses.map(u => (foodById(u) || {zh:'?'}).zh).join('、')}</div>
               </div>
               <div style={{ display:'flex', gap:4, flexShrink:0 }}>
-                {r.uses.slice(0,2).map(u => <FoodImage key={u} food={foodById(u)} w={42} h={56} radius={2} label={false}/>)}
+                {r.uses.slice(0,2).map(u => <FoodImage key={u} food={foodById(u) || {}} w={42} h={56} radius={2} label={false}/>)}
               </div>
             </div>
           ))}
@@ -548,8 +548,9 @@ const Toast = ({ children }) => (
 );
 
 // ─── 05 Recipe Detail ────────────────────────────────────────
-function Recipe({ nav, back, recipeId='r1' }) {
-  const r = RECIPES.find(x => x.id === recipeId) || RECIPES[0];
+function Recipe({ nav, back, recipeId='r1', recipesState }) {
+  const allRecipes = recipesState || RECIPES;
+  const r = allRecipes.find(x => x.id === recipeId) || allRecipes[0];
   const stepsByRecipe = {
     r1: ['番茄切丁，菠菜去梗洗淨，用廚房紙拍乾。','中火熱鍋，橄欖油下鍋後先煎番茄丁約 90 秒，逼出甜味。','把菠菜整把丟進去快炒 30 秒，直到剛剛變色為止。','蛋液與少許帕馬森混合後倒入，小火加蓋燜 4 分鐘。','出鍋前撒上海鹽片與現磨黑胡椒，趁熱享用。'],
     r2: ['雞胸肉拍鬆，用鹽、黑胡椒、橄欖油醃 10 分鐘。','番茄與洋蔥切小丁，拌香菜、檸檬汁與少許橄欖油成莎莎醬。','中大火乾鍋下肉，單面煎 4 分鐘不要翻動。','翻面後關小火再煎 3 分鐘，起鍋靜置 5 分鐘。','斜切後淋上莎莎醬，搭配麵包或沙拉。'],
@@ -557,7 +558,12 @@ function Recipe({ nav, back, recipeId='r1' }) {
     r4: ['菠菜燙熟過冰水，擰乾切碎。','洋蔥末用奶油炒香後加入麵粉拌成奶油糊。','緩慢加入牛奶後一邊攪拌，煮到濃稠。','加入菠菜，熄火後拌入優格，撒胡椒鹽即可。'],
     r5: ['蘑菇切片，用奶油與一點百里香煎至上色。','酪梨用叉子壓成粗泥，拌入檸檬汁與鹽。','吐司烤至金黃，先塗酪梨泥再鋪蘑菇。'],
   };
-  const steps = stepsByRecipe[r.id] || stepsByRecipe.r1;
+  
+  // Prefer instructions from recipe object (for dynamic recipes), fallback to legacy stepsByRecipe
+  let steps = Array.isArray(r.instructions) ? r.instructions : [];
+  if (steps.length === 0) {
+    steps = stepsByRecipe[r.id] || stepsByRecipe.r1;
+  }
   const heroFood = foodById(r.uses[0]);
 
   return (
@@ -591,14 +597,14 @@ function Recipe({ nav, back, recipeId='r1' }) {
         <Rule no="i" label="使用你的食材" right={`SAVES ${r.uses.length} ITEMS`}/>
         <div style={{ padding:'12px 22px 0', display:'flex', gap:10 }}>
           {r.uses.map(id => {
-            const f = foodById(id);
+            const f = foodById(id) || { zh: id, en: id, daysLeft: null };
             return (
               <div key={id} style={{ flex:1, border:`0.5px solid ${M.ink}`, background: M.paper }}>
                 <FoodImage food={f} w="100%" h={64} label={false}/>
                 <div style={{ padding:'8px 10px' }}>
                   <div style={{ fontFamily: M.serif, fontSize:15, lineHeight:1.1 }}>{f.zh}</div>
                   <div style={{ fontFamily: M.mono, fontSize:9, color: M.terra, letterSpacing:1, marginTop:2 }}>
-                    {f.daysLeft<=0 ? '今天到期' : `剩 ${f.daysLeft} 天`}
+                    {f.daysLeft !== null && f.daysLeft<=0 ? '今天到期' : f.daysLeft !== null ? `剩 ${f.daysLeft} 天` : '(新食材)'}
                   </div>
                 </div>
               </div>
@@ -635,6 +641,9 @@ function MercadoApp() {
   const [justAdded, setJustAdded] = useState(null);
   const [scanResult, setScanResult] = useState(null);
   const [inventory, setInventory]   = useState(null);
+  const [recipesState, setRecipesState] = useState(
+    (typeof window !== 'undefined' && window.__INITIAL_RECIPES__) ? window.__INITIAL_RECIPES__ : RECIPES
+  );
 
   const fetchInventory = () => {
     fetch(`${API_BASE}/inventory`)
@@ -643,7 +652,21 @@ function MercadoApp() {
       .catch(() => setInventory([]));
   };
 
-  useEffect(() => { fetchInventory(); }, []);
+  useEffect(() => { fetchInventory(); fetchRecipes(); }, []);
+
+  const fetchRecipes = () => {
+    fetch(`${API_BASE}/recipes`)
+      .then(r => r.json())
+      .then(data => {
+        // expose to existing components that read global RECIPES
+        try { window.RECIPES = data; } catch (e) {}
+        setRecipesState(data);
+      })
+      .catch(() => {
+        // keep using local mock RECIPES if fetch fails
+        setRecipesState(window.RECIPES || RECIPES);
+      });
+  };
 
   const nav = (to, param) => {
     setScreen(to);
@@ -691,6 +714,7 @@ function MercadoApp() {
     } catch (e) { /* toast still shows */ }
     setJustAdded(itemName);
     fetchInventory();
+    fetchRecipes();
   };
 
   // find the full inventory item for confirm-existing (to pre-fill date/location)
@@ -701,7 +725,7 @@ function MercadoApp() {
   let view;
   switch (screen) {
     case 'home':
-      view = <Home nav={nav} inventory={inventory} />;
+      view = <Home nav={nav} inventory={inventory} recipesState={recipesState} />;
       break;
     case 'scan':
       view = <Scan nav={nav} back={back} onScanComplete={onScanComplete} />;
@@ -717,10 +741,10 @@ function MercadoApp() {
       view = <Inventory nav={nav} back={back} justAdded={justAdded} inventory={inventory} />;
       break;
     case 'recipe':
-      view = <Recipe nav={nav} back={back} recipeId={params.recipe} />;
+      view = <Recipe nav={nav} back={back} recipeId={params.recipe} recipesState={recipesState} />;
       break;
     default:
-      view = <Home nav={nav} inventory={inventory} />;
+      view = <Home nav={nav} inventory={inventory} recipesState={recipesState} />;
   }
 
   return (

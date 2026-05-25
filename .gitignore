@@ -8,3 +8,6 @@ temp_upload.*
 models/*.bin
 models/*.pt
 models/*.pth
+.env
+inventory.db
+temp_upload.jpg
