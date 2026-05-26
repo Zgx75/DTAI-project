@@ -28,6 +28,28 @@ def get_current_fridge_items():
     conn.close()
     return items
 
+def get_fridge_items_sorted_by_expiry():
+    """Get fridge items sorted by expiry date (soonest first)"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        # Get items with expiry dates, sorted by expiry_date (earliest first)
+        cursor.execute("""
+            SELECT item_name, expiry_date
+            FROM inventory
+            WHERE quantity > 0
+            ORDER BY CASE
+                WHEN expiry_date IS NULL THEN datetime('2099-12-31')
+                ELSE datetime(expiry_date)
+            END ASC
+        """)
+        rows = cursor.fetchall()
+        items_with_dates = [(row[0], row[1]) for row in rows]
+    except Exception as e:
+        items_with_dates = []
+    conn.close()
+    return items_with_dates
+
 # ===================================================
 # 2. 呼叫 Groq API，根據真實庫存，吐出完美符合 React 格式的食譜
 # ===================================================
@@ -35,17 +57,27 @@ def generate_dynamic_recipes(items=None):
     # If caller provided a list of items, use it; otherwise read current fridge
     my_items = items if items is not None else get_current_fridge_items()
 
+    # Get items with expiry dates for intelligent ordering
+    items_with_dates = get_fridge_items_sorted_by_expiry() if items is None else []
+
     # Defensive: if fridge is empty, use example items so demo doesn't fail
     if not my_items:
         my_items = ["tomato", "chicken", "apple", "mushroom"]
 
     client = Groq(api_key=GROQ_API_KEY)
     food_str = ", ".join(my_items)
-    
+
+    # Build expiry hint for the prompt
+    expiry_hint = ""
+    if items_with_dates:
+        expiring_soon = [item for item, date in items_with_dates[:3] if date]
+        if expiring_soon:
+            expiry_hint = f"\n\n⚠️ 以下食材即將到期，請優先使用：【{', '.join(expiring_soon)}】"
+
     # 💡 核心魔法：用 Prompt 規訓 Llama 3 必須模仿佐原寫死的欄位格式！
     prompt = f"""
-    你是一個智慧冰箱的 AI 推薦引擎。目前冰箱裡有的真實食材英文標籤為：【{food_str}】。
-    請根據這些食材，幫我推薦 2 道適合煮的料理。
+    你是一個智慧冰箱的 AI 推薦引擎。目前冰箱裡有的真實食材英文標籤為：【{food_str}】。{expiry_hint}
+    請根據這些食材，幫我推薦 2 道適合煮的料理。如果有即將到期的食材，請優先在推薦的料理中使用它們。
 
     為了讓前端 React 能夠直接解析且完美呈現、完全不爆 UI，你『必須』且『只能』回傳標準的 JSON 陣列，裡面的欄位必須跟範例完全一模一樣。不要包含任何 markdown 語法（如 ```json）或任何廢話。
 

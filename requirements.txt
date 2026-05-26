@@ -8,3 +8,5 @@ transformers
 flask
 flask-cors
 google-generativeai
+groq
+dotenv

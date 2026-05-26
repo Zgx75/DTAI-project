@@ -175,7 +175,8 @@ function Home({ nav, inventory, recipesState }) {
         </div>
       </div>
 
-      <div style={{ padding:'8px 22px 32px' }}>
+      <div style={{ padding:'8px 22px 32px', display:'flex', gap:10 }}>
+        <Btn onClick={() => nav('inventory')}>查看庫存</Btn>
         <Btn primary onClick={() => nav('scan')}>掃描新食材 <span style={{ fontStyle:'italic', color: M.terra }}>→</span></Btn>
       </div>
     </div>
@@ -200,7 +201,8 @@ function Scan({ nav, back, onScanComplete }) {
       const data = await res.json();
       onScanComplete(data);
     } catch (e) {
-      setScanError('掃描失敗，請重試');
+      console.error('Scan error:', e);
+      setScanError(`掃描失敗: ${e.message}`);
       setScanning(false);
     }
   };
@@ -320,7 +322,8 @@ function Confirm({ nav, back, onCommit, scanResult, foodId='tomato', presetConf,
         setExpiryError('找不到日期，請手動輸入');
       }
     } catch (e) {
-      setExpiryError('掃描失敗，請手動輸入');
+      console.error('Expiry scan error:', e);
+      setExpiryError(`掃描失敗: ${e.message}`);
     } finally {
       setScanningExpiry(false);
     }
@@ -416,9 +419,6 @@ function Confirm({ nav, back, onCommit, scanResult, foodId='tomato', presetConf,
             ))}
           </div>
         </div>
-
-        <Row k="信心分數" v={`${conf.toFixed(2)} · ${conf>0.8?'高':conf>0.5?'中':'低'}`} />
-        <Row k="使用模型" v={modelLabel} />
       </div>
 
       <div style={{ padding:'22px 22px 32px', display:'flex', gap:10 }}>
@@ -529,8 +529,9 @@ function Inventory({ nav, back, justAdded, inventory }) {
         </div>
       ))}
       <div style={{ height:60 }} />
-      <div style={{ position:'sticky', bottom:0, padding:'14px 22px 32px', background:`linear-gradient(transparent, ${M.bg} 30%)` }}>
+      <div style={{ position:'sticky', bottom:0, padding:'14px 22px 32px', background:`linear-gradient(transparent, ${M.bg} 30%)`, display:'flex', gap:10, flexDirection:'column' }}>
         <Btn primary onClick={() => nav('scan')}>掃描新食材 <span style={{ color: M.terra, fontStyle:'italic' }}>→</span></Btn>
+        <Btn onClick={() => nav('home')}>回首頁</Btn>
       </div>
     </div>
   );
@@ -597,7 +598,7 @@ function Recipe({ nav, back, recipeId='r1', recipesState }) {
         <Rule no="i" label="使用你的食材" right={`SAVES ${r.uses.length} ITEMS`}/>
         <div style={{ padding:'12px 22px 0', display:'flex', gap:10 }}>
           {r.uses.map(id => {
-            const f = foodById(id) || { zh: id, en: id, daysLeft: null };
+            const f = foodById(id) || foodByName(id) || { zh: id, en: id, daysLeft: null };
             return (
               <div key={id} style={{ flex:1, border:`0.5px solid ${M.ink}`, background: M.paper }}>
                 <FoodImage food={f} w="100%" h={64} label={false}/>
@@ -632,6 +633,186 @@ function Recipe({ nav, back, recipeId='r1', recipesState }) {
   );
 }
 
+// ─── 06 Main Hub (Inventory + Recipes tabs) ──────────────────
+function Hub({ nav, inventory, recipesState, justAdded, tab, setTab }) {
+  return (
+    <div style={{ width: '100%', minHeight: '100%', background: M.bg, color: M.ink, fontFamily: M.sans, display: 'flex', flexDirection: 'column' }}>
+      {/* Tab navigation */}
+      <div style={{ height: 'calc(env(safe-area-inset-top, 0px) + 18px)' }} />
+      <div style={{ padding: '12px 22px', display: 'flex', gap: 2, borderBottom: `1px solid ${M.ink}` }}>
+        <button onClick={() => setTab('inventory')} style={{
+          flex: 1, padding: '12px 0', border: 'none', background: 'transparent',
+          fontFamily: M.mono, fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase',
+          color: tab === 'inventory' ? M.ink : M.ink3,
+          borderBottom: tab === 'inventory' ? `2px solid ${M.ink}` : 'none',
+          cursor: 'pointer', transition: 'all .12s',
+        }}>庫存</button>
+        <button onClick={() => setTab('recipes')} style={{
+          flex: 1, padding: '12px 0', border: 'none', background: 'transparent',
+          fontFamily: M.mono, fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase',
+          color: tab === 'recipes' ? M.ink : M.ink3,
+          borderBottom: tab === 'recipes' ? `2px solid ${M.ink}` : 'none',
+          cursor: 'pointer', transition: 'all .12s',
+        }}>食譜</button>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        {tab === 'inventory' ? (
+          <InventoryView nav={nav} inventory={inventory} justAdded={justAdded} />
+        ) : (
+          <RecipesView nav={nav} recipesState={recipesState} inventory={inventory} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Inventory content for Hub
+function InventoryView({ nav, inventory, justAdded }) {
+  const isLoading = inventory === null;
+
+  const displayItems = (inventory || []).map(item => {
+    const base = foodById(item.item_name) || foodByName(item.item_name) || {};
+    const daysLeft = calcDaysLeft(item.expiry_date);
+    return {
+      id:        item.item_name,
+      zh:        base.zh    || item.item_name.replace(/_/g, ' '),
+      en:        base.en    || item.item_name.replace(/_/g, ' '),
+      cat:       base.cat   || '其他',
+      c1:        base.c1    || '#AAA89C',
+      c2:        base.c2    || '#5C5A54',
+      shape:     base.shape || 'circle',
+      daysLeft,
+      quantity:    item.quantity,
+      expiry_date: item.expiry_date,
+      location:    item.location,
+    };
+  });
+
+  const sorted = [...displayItems].sort((a, b) => (a.daysLeft ?? 999) - (b.daysLeft ?? 999));
+  const expiringCount = displayItems.filter(f => f.daysLeft !== null && f.daysLeft <= 2 && f.daysLeft > 0).length;
+  const overdueCount  = displayItems.filter(f => f.daysLeft !== null && f.daysLeft <= 0).length;
+
+  const toastName = justAdded
+    ? (foodById(justAdded)?.zh || foodByName(justAdded)?.zh || justAdded)
+    : null;
+
+  return (
+    <div style={{ width: '100%' }}>
+      {justAdded && <Toast>已加入庫存 · {toastName}</Toast>}
+      <div style={{ padding: '14px 22px 18px', borderBottom: `1px solid ${M.ink}` }}>
+        <div style={{ fontFamily: M.serif, fontSize: 44, lineHeight: 0.95, letterSpacing: -0.5 }}>
+          The <span style={{ fontStyle: 'italic', color: M.olive }}>pantry.</span>
+        </div>
+        <div style={{ display: 'flex', gap: 24, marginTop: 12 }}>
+          <Stat n={isLoading ? '…' : displayItems.length} l="ITEMS" />
+          <Stat n={isLoading ? '…' : (expiringCount || '—')} l="EXPIRING" terra={expiringCount > 0} />
+          <Stat n={isLoading ? '…' : (overdueCount  || '—')} l="OVERDUE"  terra={overdueCount  > 0} />
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div style={{ padding: '24px 22px', fontFamily: M.mono, fontSize: 11, color: M.ink3, letterSpacing: 1 }}>載入庫存中…</div>
+      ) : sorted.length === 0 ? (
+        <div style={{ padding: '48px 22px', textAlign: 'center' }}>
+          <div style={{ fontFamily: M.serif, fontSize: 28, color: M.ink2 }}>庫存是空的。</div>
+          <div style={{ fontFamily: M.mono, fontSize: 11, color: M.ink3, marginTop: 8, letterSpacing: 1 }}>掃描食材開始記錄</div>
+        </div>
+      ) : sorted.map((f, i) => (
+        <div key={`${f.id}-${i}`}
+          onClick={() => nav('confirm-existing', f.id)}
+          style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 22px', borderBottom: `0.5px solid ${M.ink}22`, cursor: 'pointer', transition: 'background .12s' }}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.025)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+        >
+          <div style={{ fontFamily: M.mono, fontSize: 11, color: M.ink3, width: 24, letterSpacing: 1 }}>{String(i+1).padStart(2,'0')}</div>
+          <FoodImage food={f} w={42} h={56} radius={2} label={false}/>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: M.serif, fontSize: 20, lineHeight: 1.05 }}>{f.zh}</div>
+            <div style={{ fontFamily: M.mono, fontSize: 9, color: M.ink3, letterSpacing: 1.2, marginTop: 2 }}>
+              {f.cat.toUpperCase()} · {f.en.toUpperCase()}
+              {f.location ? ` · ${f.location}` : ''}
+              {f.quantity > 1 ? ` · ×${f.quantity}` : ''}
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            {f.daysLeft !== null ? (
+              <>
+                <div style={{ fontFamily: M.serif, fontSize: 22, lineHeight: 1, color: f.daysLeft<=2 ? M.terra : M.ink }}>
+                  {f.daysLeft<=0 ? '今' : f.daysLeft}
+                </div>
+                <div style={{ fontFamily: M.mono, fontSize: 8.5, color: M.ink3, letterSpacing: 1, marginTop: 2 }}>
+                  {f.daysLeft<=0 ? 'DUE' : 'D LEFT'}
+                </div>
+              </>
+            ) : (
+              <div style={{ fontFamily: M.mono, fontSize: 9, color: M.ink3 }}>—</div>
+            )}
+          </div>
+        </div>
+      ))}
+      <div style={{ height: 60 }} />
+      <div style={{ position: 'sticky', bottom: 0, padding: '14px 22px 32px', background: `linear-gradient(transparent, ${M.bg} 30%)` }}>
+        <Btn primary onClick={() => nav('scan')}>掃描新食材 <span style={{ color: M.terra, fontStyle: 'italic' }}>→</span></Btn>
+      </div>
+    </div>
+  );
+}
+
+// Recipes content for Hub
+function RecipesView({ nav, recipesState, inventory }) {
+  const allRecipes = recipesState || RECIPES;
+
+  const displayItems = (inventory || []).map(item => {
+    const base = foodById(item.item_name) || foodByName(item.item_name) || {};
+    const daysLeft = calcDaysLeft(item.expiry_date);
+    return {
+      id: item.item_name,
+      zh: base.zh || item.item_name.replace(/_/g, ' '),
+      daysLeft,
+    };
+  });
+
+  return (
+    <div style={{ width: '100%', minHeight: '100%' }}>
+      <div style={{ padding: '14px 22px 18px', borderBottom: `1px solid ${M.ink}` }}>
+        <div style={{ fontFamily: M.serif, fontSize: 44, lineHeight: 0.95, letterSpacing: -0.5 }}>
+          生成<br/><span style={{ fontStyle: 'italic', color: M.terra }}>食譜</span>
+        </div>
+      </div>
+
+      <div style={{ padding: '18px 22px 0' }}>
+        {allRecipes.length === 0 ? (
+          <div style={{ padding: '48px 22px', textAlign: 'center' }}>
+            <div style={{ fontFamily: M.serif, fontSize: 28, color: M.ink2 }}>沒有食譜。</div>
+          </div>
+        ) : allRecipes.map((r) => (
+          <div key={r.id} onClick={() => nav('recipe', r.id)} style={{
+            borderTop: `0.5px solid ${M.ink}33`,
+            padding: '14px 0',
+            display: 'flex', gap: 14, cursor: 'pointer', transition: 'opacity .12s',
+          }}
+            onMouseEnter={e => e.currentTarget.style.opacity = 0.7}
+            onMouseLeave={e => e.currentTarget.style.opacity = 1}
+          >
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: M.mono, fontSize: 10, color: M.terra, letterSpacing: 1.5, marginBottom: 4 }}>{r.min} MIN · {r.kcal} KCAL</div>
+              <div style={{ fontFamily: M.serif, fontSize: 22, lineHeight: 1.15, marginBottom: 6 }}>{r.zh}</div>
+              <div style={{ fontStyle: 'italic', fontSize: 12, color: M.ink2 }}>消化 {r.uses.map(u => (foodById(u) || {zh:'?'}).zh).join('、')}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+              {r.uses.slice(0,2).map(u => <FoodImage key={u} food={foodById(u) || {}} w={42} h={56} radius={2} label={false}/>)}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ height: 60 }} />
+    </div>
+  );
+}
+
 // ─── App shell ───────────────────────────────────────────────
 function MercadoApp() {
   const [screen, setScreen]       = useState('home');
@@ -641,6 +822,7 @@ function MercadoApp() {
   const [justAdded, setJustAdded] = useState(null);
   const [scanResult, setScanResult] = useState(null);
   const [inventory, setInventory]   = useState(null);
+  const [tab, setTab]             = useState('inventory');
   const [recipesState, setRecipesState] = useState(
     (typeof window !== 'undefined' && window.__INITIAL_RECIPES__) ? window.__INITIAL_RECIPES__ : RECIPES
   );
@@ -724,6 +906,9 @@ function MercadoApp() {
 
   let view;
   switch (screen) {
+    case 'hub':
+      view = <Hub nav={nav} inventory={inventory} recipesState={recipesState} justAdded={justAdded} tab={tab} setTab={setTab} />;
+      break;
     case 'home':
       view = <Home nav={nav} inventory={inventory} recipesState={recipesState} />;
       break;
