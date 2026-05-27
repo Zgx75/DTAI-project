@@ -52,7 +52,6 @@ function MercadoHome() {
           MERCADO
         </div>
         <div style={{ fontFamily:M.mono, fontSize:10, letterSpacing:2, color:M.ink2 }}>
-          17.05.26
         </div>
       </div>
 

@@ -4,9 +4,7 @@
 
 const { useState, useEffect, useRef } = React;
 
-const API_BASE = window.location.hostname.includes('ngrok')
-  ? `${window.location.protocol}//${window.location.host}`
-  : `http://${window.location.hostname}:5000`;
+const API_BASE = 'http://localhost:5000';
 
 // days between today and an ISO date string; null if no date
 const calcDaysLeft = (isoDate) => {
@@ -125,7 +123,7 @@ function Home({ nav, inventory, recipesState }) {
       <div style={{ height: 'calc(env(safe-area-inset-top, 0px) + 18px)' }} />
       <div style={{ padding:'0 22px', display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
         <div style={{ fontFamily: M.mono, fontSize: 10, letterSpacing: 2, color: M.ink2 }}>MERCADO</div>
-        <div style={{ fontFamily: M.mono, fontSize: 10, letterSpacing: 2, color: M.ink2 }}>17.05.26</div>
+        <div style={{ fontFamily: M.mono, fontSize: 10, letterSpacing: 2, color: M.ink2 }}></div>
       </div>
 
       <div style={{ padding:'8px 22px 18px', borderBottom:`1px solid ${M.ink}` }}>
@@ -304,9 +302,11 @@ function Confirm({ nav, back, onCommit, scanResult, foodId='tomato', presetConf,
   // editable fields — pre-fill from existing inventory item if available
   const [expiryDate, setExpiryDate]       = useState(existingItem?.expiry_date || '');
   const [location, setLocation]           = useState(existingItem?.location    || '冷藏');
+  const [quantity, setQuantity]           = useState(1);
   const [scanningExpiry, setScanningExpiry] = useState(false);
   const [expiryError, setExpiryError]     = useState(null);
   const expiryFileRef = useRef(null);
+  const expiryInputRef = useRef(null);
 
   const handleExpiryFile = async (file) => {
     if (!file) return;
@@ -322,17 +322,19 @@ function Confirm({ nav, back, onCommit, scanResult, foodId='tomato', presetConf,
         setExpiryDate(data.expiry_date);
       } else {
         setExpiryError('找不到日期，請手動輸入');
+        setTimeout(() => expiryInputRef.current?.click(), 100);
       }
     } catch (e) {
       console.error('Expiry scan error:', e);
       setExpiryError(`掃描失敗: ${e.message}`);
+      setTimeout(() => expiryInputRef.current?.click(), 100);
     } finally {
       setScanningExpiry(false);
     }
   };
 
   const handleCommit = () => {
-    if (onCommit) onCommit(className, conf, expiryDate || null, location);
+    if (onCommit) onCommit(className, conf, expiryDate || null, location, quantity);
     nav('inventory');
   };
 
@@ -404,6 +406,21 @@ function Confirm({ nav, back, onCommit, scanResult, foodId='tomato', presetConf,
         )}
 
         <Row k="加入數量" v="× 1" />
+
+        <div style={{ padding:'12px 0', borderBottom:`0.5px solid ${M.ink}22`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div style={{ fontFamily: M.mono, fontSize:10, color: M.ink2, letterSpacing:1.5, textTransform:'uppercase' }}>數量</div>
+          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            <button onClick={() => setQuantity(Math.max(1, quantity - 1))} style={{
+              width:32, height:32, border:`0.5px solid ${M.ink}`, background:'transparent', color:M.ink,
+              fontFamily:M.serif, fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+            }}>−</button>
+            <div style={{ fontFamily:M.serif, fontSize:20, minWidth:40, textAlign:'center' }}>{quantity}</div>
+            <button onClick={() => setQuantity(quantity + 1)} style={{
+              width:32, height:32, border:`0.5px solid ${M.ink}`, background:'transparent', color:M.ink,
+              fontFamily:M.serif, fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+            }}>+</button>
+          </div>
+        </div>
 
         {/* 存放位置 — 3-way toggle */}
         <div style={{ padding:'12px 0', borderBottom:`0.5px solid ${M.ink}22`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
@@ -883,7 +900,7 @@ function MercadoApp() {
     nav('confirm');
   };
 
-  const onCommit = async (itemName, confidence, expiryDate, location) => {
+  const onCommit = async (itemName, confidence, expiryDate, location, quantity=1) => {
     try {
       await fetch(`${API_BASE}/inventory`, {
         method: 'POST',
@@ -893,6 +910,7 @@ function MercadoApp() {
           confidence,
           expiry_date: expiryDate || null,
           location:    location   || null,
+          quantity:    quantity   || 1,
         }),
       });
     } catch (e) { /* toast still shows */ }

@@ -21,6 +21,18 @@ const RECIPES = [
 
 const foodById = (id) => FOODS.find(f => f.id === id);
 
+// English to Chinese mapping for food names
+const EN_TO_ZH = {
+  'tomato': '牛番茄', 'beef tomato': '牛番茄',
+  'spinach': '菠菜',
+  'chicken': '雞胸肉', 'chicken breast': '雞胸肉',
+  'milk': '全脂牛奶', 'whole milk': '全脂牛奶',
+  'apple': '富士蘋果', 'fuji apple': '富士蘋果',
+  'avocado': '酪梨',
+  'yogurt': '原味優格', 'natural yogurt': '原味優格',
+  'mushroom': '白蘑菇', 'white mushroom': '白蘑菇',
+};
+
 // ─────────────────────────────────────────────────────────────
 // FoodImage — beautiful CSS-only "food blob" placeholder.
 // Uses radial gradients to suggest a 3D, lit, appetizing object;
@@ -114,7 +126,16 @@ const FOOD_MAP = {
 function foodByName(className) {
   if (!className) return null;
   const key = className.toLowerCase().replace(/[^a-z]/g, '_').replace(/^_+|_+$/g, '');
-  return FOOD_MAP[key] || {
+  const found = FOOD_MAP[key];
+  if (found) return found;
+
+  // Try to find Chinese name from EN_TO_ZH mapping
+  const zhName = EN_TO_ZH[className.toLowerCase()];
+  if (zhName) {
+    return { zh: zhName, en: className, cat: '其他', c1: '#AAA89C', c2: '#5C5A54', shape: 'circle' };
+  }
+
+  return {
     zh: className.replace(/_/g, ' '), en: className.replace(/_/g, ' '),
     cat: '其他', c1: '#AAA89C', c2: '#5C5A54', shape: 'circle',
   };
