@@ -4,7 +4,9 @@
 
 const { useState, useEffect, useRef } = React;
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = window.location.hostname.includes('ngrok')
+  ? `${window.location.protocol}//${window.location.host}`
+  : `http://${window.location.hostname}:5000`;
 
 // days between today and an ISO date string; null if no date
 const calcDaysLeft = (isoDate) => {
@@ -122,7 +124,7 @@ function Home({ nav, inventory, recipesState }) {
     <div style={{ width:'100%', minHeight:'100%', background: M.bg, color: M.ink, fontFamily: M.sans }}>
       <div style={{ height: 'calc(env(safe-area-inset-top, 0px) + 18px)' }} />
       <div style={{ padding:'0 22px', display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
-        <div style={{ fontFamily: M.mono, fontSize: 10, letterSpacing: 2, color: M.ink2 }}>MERCADO · VOL 11 · WED</div>
+        <div style={{ fontFamily: M.mono, fontSize: 10, letterSpacing: 2, color: M.ink2 }}>MERCADO</div>
         <div style={{ fontFamily: M.mono, fontSize: 10, letterSpacing: 2, color: M.ink2 }}>17.05.26</div>
       </div>
 

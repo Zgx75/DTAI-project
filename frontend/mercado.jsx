@@ -49,7 +49,7 @@ function MercadoHome() {
       {/* masthead */}
       <div style={{ padding:'0 22px', display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
         <div style={{ fontFamily:M.mono, fontSize:10, letterSpacing:2, color:M.ink2 }}>
-          MERCADO · VOL 11 · WED
+          MERCADO
         </div>
         <div style={{ fontFamily:M.mono, fontSize:10, letterSpacing:2, color:M.ink2 }}>
           17.05.26
